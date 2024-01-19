@@ -17,9 +17,9 @@ do
     if [ -d "$DIR" ]; then
         echo "Oops! The results exist at ${DIR} (so skip this job)"
     else
-#        python train.py \
-        echo
-        "--root ${DATA} \
+#        echo
+        python train.py \
+        --root ${DATA} \
         --seed ${SEED} \
         --trainer ${TRAINER} \
         --dataset-config-file configs/datasets/${DATASET}.yaml \
@@ -28,6 +28,6 @@ do
         TRAINER.COOP.N_CTX ${NCTX} \
         TRAINER.COOP.CSC ${CSC} \
         TRAINER.COOP.CLASS_TOKEN_POSITION ${CTP} \
-        DATASET.NUM_SHOTS ${SHOTS}"
+        DATASET.NUM_SHOTS ${SHOTS}
     fi
 done
