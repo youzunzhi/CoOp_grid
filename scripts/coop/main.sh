@@ -5,7 +5,7 @@ DATA=data
 TRAINER=CoOp
 
 DATASET=oxford_pets
-CFG=vit_b32 # config file
+CFG=vit_l14_336 # config file
 CTP=end  # class token position (end or middle)
 NCTX=16  # number of context tokens
 SHOTS=16  # number of shots (1, 2, 4, 8, 16)

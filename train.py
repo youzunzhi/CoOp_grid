@@ -137,7 +137,6 @@ def main(args):
         print("Collecting env info ...")
         print("** System info **\n{}\n".format(collect_env_info()))
     else:
-        # unfreeze cfg if only using cpu
         cfg.defrost()
         cfg.TRAINER.COOP.PREC = "fp32"  # fp16, fp32, amp
         cfg.USE_CUDA = False
