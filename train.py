@@ -134,10 +134,16 @@ def main(args):
 
     if torch.cuda.is_available() and cfg.USE_CUDA:
         torch.backends.cudnn.benchmark = True
+        print("Collecting env info ...")
+        print("** System info **\n{}\n".format(collect_env_info()))
+    else:
+        # unfreeze cfg if only using cpu
+        cfg.defrost()
+        cfg.TRAINER.COOP.PREC = "fp32"  # fp16, fp32, amp
+        cfg.USE_CUDA = False
+        cfg.freeze()
 
     print_args(args, cfg)
-    print("Collecting env info ...")
-    print("** System info **\n{}\n".format(collect_env_info()))
 
     trainer = build_trainer(cfg)
 
