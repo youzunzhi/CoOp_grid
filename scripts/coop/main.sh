@@ -13,7 +13,8 @@ CSC=False  # class-specific context (False or True)
 GRID_N=3
 TOTAL_TRAIN_BATCHES=400
 
-for SEED in 1 2 3
+#for SEED in 1 2 3
+for SEED in 1
 do
     DIR=output/${DATASET}/${TRAINER}/${CFG}_${SHOTS}shots/nctx${NCTX}_csc${CSC}_ctp${CTP}_${GRID_N}x${GRID_N}/seed${SEED}
     if [ -d "$DIR" ]; then

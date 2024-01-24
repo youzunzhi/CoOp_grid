@@ -241,9 +241,7 @@ class GridPromptLearner(nn.Module):
         else:
             raise NotImplementedError
 
-        self.tokenized_prompts = tokenized_prompts
-
-        return prompts
+        return prompts, tokenized_prompts
 
 
 class CustomCLIP(nn.Module):
@@ -284,8 +282,7 @@ class CustomCLIPGridMatching(nn.Module):
     def forward(self, image, grid_labels):
         image_features = self.image_encoder(image.type(self.dtype))
 
-        prompts = self.prompt_learner(grid_labels)
-        tokenized_prompts = self.tokenized_prompts
+        prompts, tokenized_prompts = self.prompt_learner(grid_labels)
         text_features = self.text_encoder(prompts, tokenized_prompts)
 
         image_features = image_features / image_features.norm(dim=-1, keepdim=True)
