@@ -27,6 +27,8 @@ do
         --dataset-config-file configs/datasets/${DATASET}.yaml \
         --config-file configs/trainers/${TRAINER}/${CFG}.yaml \
         --output-dir ${DIR} \
+        --grid_n ${GRID_N} \
+        --total_train_batches ${TOTAL_TRAIN_BATCHES} \
         TRAINER.COOP.N_CTX ${NCTX} \
         TRAINER.COOP.CSC ${CSC} \
         TRAINER.COOP.CLASS_TOKEN_POSITION ${CTP} \
