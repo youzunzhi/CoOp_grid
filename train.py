@@ -73,6 +73,12 @@ def reset_cfg(cfg, args):
     if args.head:
         cfg.MODEL.HEAD.NAME = args.head
 
+    if args.grid_n:
+        cfg.GRID_N = args.grid_n
+
+    if args.total_train_batches:
+        cfg.TOTAL_TRAIN_BATCHES = args.total_train_batches
+
 
 def extend_cfg(cfg):
     """
@@ -142,6 +148,13 @@ def main(args):
         cfg.USE_CUDA = False
         cfg.freeze()
 
+    # adjust input size so the grid size == clip_input_size
+    if cfg.GRID_N > 1:
+        cfg.defrost()
+        cfg.INPUT.SIZE = (cfg.INPUT.SIZE[0] // cfg.GRID_N, cfg.INPUT.SIZE[1] // cfg.GRID_N)
+        cfg.DATALOADER.TRAIN_X.SAMPLER = "RandomReplacementSampler"
+        cfg.freeze()
+
     print_args(args, cfg)
 
     trainer = build_trainer(cfg)
@@ -208,5 +221,13 @@ if __name__ == "__main__":
         nargs=argparse.REMAINDER,
         help="modify config options using the command-line",
     )
+    parser.add_argument(
+        "--grid_n", type=int, default=1, help="number of images in row/column of grid. 1 for single image."
+    )
+    parser.add_argument(
+        "--total_train_batches", type=int, default=None,
+        help="total number of batches in training set. Used for grid training."
+    )
+
     args = parser.parse_args()
     main(args)

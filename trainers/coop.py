@@ -182,6 +182,70 @@ class PromptLearner(nn.Module):
         return prompts
 
 
+class GridPromptLearner(nn.Module):
+    def __init__(self, cfg, classnames, clip_model):
+        super().__init__()
+        n_ctx = cfg.TRAINER.COOP.N_CTX
+        ctx_init = cfg.TRAINER.COOP.CTX_INIT
+        self.dtype = clip_model.dtype
+        ctx_dim = clip_model.ln_final.weight.shape[0]
+        grid_n = cfg.GRID_N
+
+        if ctx_init:
+            raise NotImplementedError
+        else:
+            # random initialization
+            if cfg.TRAINER.COOP.CSC:
+                raise NotImplementedError
+            else:
+                print("Initializing a generic context")
+                ctx_vectors = torch.empty(n_ctx, ctx_dim, dtype=self.dtype)
+            nn.init.normal_(ctx_vectors, std=0.02)
+            self.prompt_prefix = " ".join(["X"] * n_ctx)
+
+        print(f'Initial context: "{self.prompt_prefix}"')
+        print(f"Number of context words (tokens): {n_ctx}")
+
+        self.ctx = nn.Parameter(ctx_vectors)  # to be optimized
+
+        self.n_cls = len(classnames)
+        self.n_ctx = n_ctx
+        self.class_token_position = cfg.TRAINER.COOP.CLASS_TOKEN_POSITION
+        self.clip_model = clip_model
+        self.classnames = classnames
+        self.classnames_placements = " ".join(["{}"] * grid_n * grid_n)
+
+    def forward(self, grid_labels):
+        ctx = self.ctx
+        if ctx.dim() == 2:
+            ctx = ctx.unsqueeze(0).expand(grid_labels.size(0), -1, -1)
+
+        prompt_strs = [self.prompt_prefix + " " + self.classnames_placements.format(
+            *[self.classnames[label] for label in grid_labels[i].flatten()]) + "." for i in range(len(grid_labels))]
+        tokenized_prompts = torch.cat([clip.tokenize(p) for p in prompt_strs])
+        with torch.no_grad():
+            embedding = self.clip_model.token_embedding(tokenized_prompts).type(self.dtype)
+
+        prefix = embedding[:, :1, :]  # SOS
+        suffix = embedding[:, 1 + self.n_ctx:, :]  # CLS, EOS
+
+        if self.class_token_position == "end":
+            prompts = torch.cat(
+                [
+                    prefix,  # (batch_size, 1, dim)
+                    ctx,  # (batch_size, n_ctx, dim)
+                    suffix,  # (batch_size, *, dim)
+                ],
+                dim=1,
+            )
+        else:
+            raise NotImplementedError
+
+        self.tokenized_prompts = tokenized_prompts
+
+        return prompts
+
+
 class CustomCLIP(nn.Module):
     def __init__(self, cfg, classnames, clip_model):
         super().__init__()
@@ -196,6 +260,31 @@ class CustomCLIP(nn.Module):
         image_features = self.image_encoder(image.type(self.dtype))
 
         prompts = self.prompt_learner()
+        tokenized_prompts = self.tokenized_prompts
+        text_features = self.text_encoder(prompts, tokenized_prompts)
+
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+
+        logit_scale = self.logit_scale.exp()
+        logits = logit_scale * image_features @ text_features.t()
+
+        return logits
+
+
+class CustomCLIPGridMatching(nn.Module):
+    def __init__(self, cfg, classnames, clip_model):
+        super().__init__()
+        self.prompt_learner = GridPromptLearner(cfg, classnames, clip_model)
+        self.image_encoder = clip_model.visual
+        self.text_encoder = TextEncoder(clip_model)
+        self.logit_scale = clip_model.logit_scale
+        self.dtype = clip_model.dtype
+
+    def forward(self, image, grid_labels):
+        image_features = self.image_encoder(image.type(self.dtype))
+
+        prompts = self.prompt_learner(grid_labels)
         tokenized_prompts = self.tokenized_prompts
         text_features = self.text_encoder(prompts, tokenized_prompts)
 
@@ -231,7 +320,10 @@ class CoOp(TrainerX):
             clip_model.float()
 
         print("Building custom CLIP")
-        self.model = CustomCLIP(cfg, classnames, clip_model)
+        if cfg.GRID_N > 1:
+            self.model = CustomCLIPGridMatching(cfg, classnames, clip_model)
+        else:
+            self.model = CustomCLIP(cfg, classnames, clip_model)
 
         print("Turning off gradients in both the image and the text encoder")
         for name, param in self.model.named_parameters():
@@ -258,18 +350,28 @@ class CoOp(TrainerX):
 
     def forward_backward(self, batch):
         image, label = self.parse_batch_train(batch)
+
+        grid_labels = None
+        if self.cfg.GRID_N > 1:
+            image, label, grid_labels = self.get_grid_inputs(image, label, self.cfg.GRID_N)
         
         prec = self.cfg.TRAINER.COOP.PREC
         if prec == "amp":
             with autocast():
-                output = self.model(image)
+                if self.cfg.GRID_N > 1:
+                    output = self.model(image, grid_labels)
+                else:
+                    output = self.model(image)
                 loss = F.cross_entropy(output, label)
             self.optim.zero_grad()
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optim)
             self.scaler.update()
         else:
-            output = self.model(image)
+            if self.cfg.GRID_N > 1:
+                output = self.model(image, grid_labels)
+            else:
+                output = self.model(image)
             loss = F.cross_entropy(output, label)
             self.model_backward_and_update(loss)
 
@@ -282,6 +384,21 @@ class CoOp(TrainerX):
             self.update_lr()
 
         return loss_summary
+
+    def get_grid_inputs(self, images, labels, grid_n):
+        batch_size = images.size(0) // (grid_n * grid_n)
+        images = images.reshape(batch_size, grid_n, grid_n, *images.shape[1:])
+        # cat images to grids
+        image_cols = torch.cat([images[:, i, :, :, :, :] for i in range(grid_n)], dim=-2)
+        image_grids = torch.cat([image_cols[:, i, :, :, :] for i in range(grid_n)], dim=-1)
+
+        grid_labels = labels.reshape(batch_size, grid_n, grid_n)
+
+        matching_labels = torch.randperm(batch_size).to(self.device)
+        image_grids = image_grids[matching_labels]
+        grid_labels = grid_labels[matching_labels]
+
+        return image_grids, matching_labels, grid_labels
 
     def parse_batch_train(self, batch):
         input = batch["img"]
