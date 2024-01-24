@@ -99,7 +99,7 @@ class PromptLearner(nn.Module):
         name_lens = [len(_tokenizer.encode(name)) for name in classnames]
         prompts = [prompt_prefix + " " + name + "." for name in classnames]
 
-        tokenized_prompts = torch.cat([clip.tokenize(p) for p in prompts]).to(clip_model.devices)
+        tokenized_prompts = torch.cat([clip.tokenize(p) for p in prompts])
         with torch.no_grad():
             embedding = clip_model.token_embedding(tokenized_prompts).type(dtype)
 
@@ -222,7 +222,7 @@ class GridPromptLearner(nn.Module):
 
         prompt_strs = [self.prompt_prefix + " " + self.classnames_placements.format(
             *[self.classnames[label] for label in grid_labels[i].flatten()]) + "." for i in range(len(grid_labels))]
-        tokenized_prompts = torch.cat([clip.tokenize(p) for p in prompt_strs])
+        tokenized_prompts = torch.cat([clip.tokenize(p) for p in prompt_strs]).to(clip_model.devices)
         with torch.no_grad():
             embedding = self.clip_model.token_embedding(tokenized_prompts).type(self.dtype)
 
