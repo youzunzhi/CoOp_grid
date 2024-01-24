@@ -226,7 +226,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--total_train_batches", type=int, default=None,
-        help="total number of batches in training set. Used for grid training."
+        help="total number of batches in training set per epoch. Used for grid training."
     )
 
     args = parser.parse_args()
