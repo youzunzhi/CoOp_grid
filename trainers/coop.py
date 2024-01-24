@@ -351,7 +351,6 @@ class CoOp(TrainerX):
         grid_labels = None
         if self.cfg.GRID_N > 1:
             image, label, grid_labels = self.get_grid_inputs(image, label, self.cfg.GRID_N)
-        
         prec = self.cfg.TRAINER.COOP.PREC
         if prec == "amp":
             with autocast():
@@ -393,7 +392,7 @@ class CoOp(TrainerX):
 
         matching_labels = torch.randperm(batch_size).to(self.device)
         image_grids = image_grids[matching_labels]
-        grid_labels = grid_labels[matching_labels]
+        grid_labels = grid_labels[matching_labels].to(self.device)
 
         return image_grids, matching_labels, grid_labels
 
